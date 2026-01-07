@@ -9,7 +9,7 @@ HOW TO RUN THIS APP:
        pip install streamlit pandas matplotlib seaborn plotly
 
 3. Run the Streamlit app:
-       streamlit run app.py
+       streamlit run src\app.py\app.py
 
 4. The app will open automatically in your browser.
    If not, look for the URL printed in the terminal (usually http://localhost:8501).
