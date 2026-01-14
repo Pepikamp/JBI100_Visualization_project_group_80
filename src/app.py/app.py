@@ -339,7 +339,7 @@ all_domains = sorted(list(CSV_FILES.keys()))
 st.sidebar.header("Explorer settings")
 
 active_domains = st.sidebar.multiselect(
-    "Active domains (affects indicator dropdowns + stability score)",
+    "Active domains",
     all_domains,
     default=["economy", "demographics", "government_civics"],
 )
@@ -398,7 +398,7 @@ all_countries = sorted(df[COUNTRY_COL].dropna().unique())
 exclude_countries = st.sidebar.multiselect("Exclude countries (optional)", all_countries, default=[])
 
 highlight_countries = st.sidebar.multiselect(
-    "Highlight countries (linked to profile/table/map)",
+    "Highlight countries",
     all_countries,
     default=[],
 )
@@ -442,7 +442,7 @@ if plot_df.empty:
 left, right = st.columns([2.2, 1.0], gap="large")
 
 with left:
-    st.subheader("Interactive scatterplot (Plotly)")
+    st.subheader("Interactive scatterplot")
 
     opts = st.columns([1.2, 1.0, 1.0])
     with opts[0]:
@@ -474,7 +474,7 @@ with left:
 
     m1, m2, m3 = st.columns([1, 1, 1])
     with m1:
-        st.metric("Pearson r (visible)", f"{corr:.3f}" if pd.notna(corr) else "n/a")
+        st.metric("Pearson coefficient", f"{corr:.3f}" if pd.notna(corr) else "n/a")
     with m2:
         st.metric("Countries visible", f"{plot_view_df[COUNTRY_COL].nunique()}")
     with m3:
@@ -494,15 +494,16 @@ with left:
     plot_df["_is_outlier"] = ((zx.abs() > 2.5) | (zy.abs() > 2.5)).fillna(False)
 
     fig = px.scatter(
-        plot_view_df,
-        x=x_col,
-        y=y_col,
-        color=color_col,
-        size=size_col,
-        hover_name=COUNTRY_COL,
-        hover_data=hover_data,
-        title=f"{y_pretty} vs {x_pretty}",
-        trendline="ols" if show_trendline else None,
+    plot_view_df,
+    x=x_col,
+    y=y_col,
+    color=color_col,
+    size=size_col,
+    hover_name=COUNTRY_COL,
+    hover_data=hover_data,
+    title=f"{y_pretty} vs {x_pretty}",
+    trendline="ols" if show_trendline else None,
+    color_continuous_scale="Turbo",  
     )
 
     # Highlight overlay (only if not already showing only highlighted)
@@ -532,13 +533,55 @@ with left:
 
     st.plotly_chart(fig, use_container_width=True)
 
+    # ---------------------------------------------------------
+    # COMPARE (A vs B) - moved UNDER the scatterplot
+    # ---------------------------------------------------------
+    st.subheader("Compare countries (A vs B)")
+    st.caption("Comparison uses the full dataset (even if a country is missing from the current scatter view).")
+
+    if compare_a != "None" and compare_b != "None" and compare_a != compare_b:
+        a = df[df[COUNTRY_COL] == compare_a]
+        b = df[df[COUNTRY_COL] == compare_b]
+
+        if a.empty or b.empty:
+            st.info("One of the selected countries is not in the dataset.")
+        else:
+            a = a.iloc[0]
+            b = b.iloc[0]
+
+            def fmt(v):
+                return "n/a" if pd.isna(v) else v
+
+            compare_cols = [x_col, y_col]
+            if size_col is not None:
+                compare_cols.append(size_col)
+            if "stability_score" in df.columns:
+                compare_cols.append("stability_score")
+
+            # de-duplicate while preserving order
+            compare_cols = [c for c in dict.fromkeys(compare_cols) if c is not None]
+
+            rows = []
+            for col in compare_cols:
+                va, vb = a.get(col, np.nan), b.get(col, np.nan)
+                rows.append(
+                    {
+                        "Indicator": pretty_name(col),
+                        compare_a: fmt(va),
+                        compare_b: fmt(vb),
+                        "Δ (A-B)": (va - vb) if (pd.notna(va) and pd.notna(vb)) else "n/a",
+                    }
+                )
+
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    else:
+        st.caption("Select two different countries in the sidebar to compare.")
+
 with right:
-    st.subheader("Country profile (linked)")
+    st.subheader("Country profile")
 
     default_profile = (
-        highlight_countries[0]
-        if highlight_countries
-        else (all_countries[0] if all_countries else None)
+        highlight_countries[0] if highlight_countries else (all_countries[0] if all_countries else None)
     )
     profile_country = st.selectbox(
         "Profile country",
@@ -562,10 +605,7 @@ with right:
 
         st.write(f"**{COUNTRY_COL}:** {r[COUNTRY_COL]}")
         if "stability_score" in df.columns:
-            st.metric(
-                "Score (stability)",
-                f"{r['stability_score']:.1f}" if pd.notna(r["stability_score"]) else "n/a",
-            )
+            st.metric("Score (stability)", f"{r['stability_score']:.1f}" if pd.notna(r["stability_score"]) else "n/a")
 
         st.markdown("**Selected indicators:**")
 
@@ -588,42 +628,11 @@ with right:
         else:
             st.write("**Outlier (current view):** n/a")
 
-    st.subheader("Compare (A vs B)")
-    if compare_a != "None" and compare_b != "None" and compare_a != compare_b:
-        a = df[df[COUNTRY_COL] == compare_a]
-        b = df[df[COUNTRY_COL] == compare_b]
-        if a.empty or b.empty:
-            st.info("One of the selected countries is not in the dataset.")
-        else:
-            a = a.iloc[0]
-            b = b.iloc[0]
-
-            def fmt(v):
-                return "n/a" if pd.isna(v) else v
-
-            comp_rows = []
-            for col in [x_col, y_col] + ([size_col] if size_col is not None else []) + (["stability_score"] if "stability_score" in df.columns else []):
-                if col is None:
-                    continue
-                va, vb = a.get(col, np.nan), b.get(col, np.nan)
-                comp_rows.append(
-                    {
-                        "Indicator": pretty_name(col),
-                        compare_a: fmt(va),
-                        compare_b: fmt(vb),
-                        "Δ (A-B)": (va - vb) if (pd.notna(va) and pd.notna(vb)) else "n/a",
-                    }
-                )
-            st.dataframe(pd.DataFrame(comp_rows), use_container_width=True, hide_index=True)
-    else:
-        st.caption("Select two different countries in the sidebar to compare.")
-
-
 # ---------------------------------------------------------
 # 7. TABLE (LINKED)
 # ---------------------------------------------------------
 
-st.subheader("Country table (linked to current filters)")
+st.subheader("Country table")
 st.caption("If you highlight countries, the table shows only those. Otherwise it shows the full filtered set.")
 
 table_source = plot_df.copy()
@@ -666,7 +675,7 @@ st.dataframe(table_df, use_container_width=True, hide_index=True)
 # 8. WORLD MAP (OPTION B: FULL-WIDTH MAP, INFO BELOW)
 # ---------------------------------------------------------
 
-st.subheader("World map (linked to highlights)")
+st.subheader("World map")
 
 # ---- controls (above map, compact) ----
 ctrl1, ctrl2, ctrl3 = st.columns([2.2, 1.2, 1.2])
@@ -722,7 +731,7 @@ else:
     if use_log_scale:
         map_df["map_value"] = np.log10(map_df["map_value"] + 1)
 
-    color_scale = "Viridis"
+    color_scale = "Turbo"
     show_scale = True
     colorbar_title = f"{map_metric_pretty}" + (" (log10+1)" if use_log_scale else "")
 
@@ -805,7 +814,11 @@ map_fig.update_layout(
 st.plotly_chart(
     map_fig,
     use_container_width=True,
-    config={"displayModeBar": False},
+    config={
+        "displayModeBar": True,   # show tools
+        "scrollZoom": True,       # mousewheel zoom
+        "displaylogo": False,
+    },
 )
 
 # ---- Neat legend below the map (replaces the Plotly colorbar) ----
@@ -831,29 +844,40 @@ else:
         else:
             st.caption("min/max: n/a")
 
-# ---- Optional horizontal colorbar under the legend (clean + no map shrink) ----
+# ---- Horizontal colorbar under the legend (Turbo, labels follow log toggle) ----
 if map_metric_pretty != "Highlight only":
-    # Viridis-like gradient (good enough visually, matches Plotly's Viridis vibe)
-    viridis_css = "linear-gradient(90deg, #440154, #3b528b, #21918c, #5ec962, #fde725)"
+    turbo_css = (
+        "linear-gradient(90deg, "
+        "#30123b, #3b4cc0, #2c7bb6, #00a6ca, #00ccbc, "
+        "#90eb9d, #f9d057, #f29e2e, #e76818, #d7191c)"
+    )
 
-    # Labels: show min / mid / max based on raw (non-log) values
+    # Compute labels based on raw or log values
     if pd.notna(vmin) and pd.notna(vmax):
-        vmid = (vmin + vmax) / 2
-        min_txt = f"{vmin:,.2f}"
-        mid_txt = f"{vmid:,.2f}"
-        max_txt = f"{vmax:,.2f}"
+        if use_log_scale:
+            vmin_s = np.log10(vmin + 1)
+            vmax_s = np.log10(vmax + 1)
+            vmid_s = (vmin_s + vmax_s) / 2
+            min_txt = f"{vmin_s:.2f}"
+            mid_txt = f"{vmid_s:.2f}"
+            max_txt = f"{vmax_s:.2f}"
+        else:
+            vmid = (vmin + vmax) / 2
+            min_txt = f"{vmin:,.2f}"
+            mid_txt = f"{vmid:,.2f}"
+            max_txt = f"{vmax:,.2f}"
     else:
         min_txt, mid_txt, max_txt = "n/a", "n/a", "n/a"
 
     st.markdown(
         f"""
-        <div style="margin-top:6px;">
+        <div style="margin-top:8px;">
           <div style="
               height:12px;
               width:100%;
-              background:{viridis_css};
+              background:{turbo_css};
               border-radius:8px;
-              border:1px solid rgba(255,255,255,0.15);
+              border:1px solid rgba(255,255,255,0.18);
           "></div>
           <div style="
               display:flex;
@@ -900,7 +924,7 @@ if map_metric_pretty != "Highlight only" and missing_for_metric:
 # 9. STATIC SCATTERPLOT (optional)
 # ---------------------------------------------------------
 
-st.subheader("Static scatterplot (matplotlib / seaborn)")
+st.subheader("Static scatterplot")
 st.markdown("Useful for exporting figures to the report.")
 
 plt.figure(figsize=(6, 4))
