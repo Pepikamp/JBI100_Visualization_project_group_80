@@ -9,7 +9,7 @@ HOW TO RUN THIS APP:
        pip install streamlit pandas matplotlib seaborn plotly numpy
 
 3. Run the Streamlit app (from the project root):
-       streamlit run src/app.py/app.py
+       streamlit run src/app.py
 
 4. The app will open automatically in your browser.
    If not, look for the URL printed in the terminal (usually http://localhost:8501).
@@ -40,6 +40,11 @@ CSV_FILES = {
 }
 
 COUNTRY_COL = "Country"
+
+# Color theme: continuous GREEN
+CONTINUOUS_GREEN_SCALE = "Greens"
+HIGHLIGHT_GREEN = "#2ECC71"   # nice, readable green
+DARK_BG = "#111111"
 
 
 # ---------------------------------------------------------
@@ -311,8 +316,8 @@ def maybe_to_numeric(series: pd.Series) -> pd.Series:
     # remove separators/symbols
     s_clean = (
         s.str.replace(",", "", regex=False)
-         .str.replace("%", "", regex=False)
-         .str.replace("$", "", regex=False)
+        .str.replace("%", "", regex=False)
+        .str.replace("$", "", regex=False)
     )
 
     # detect numeric-looking values
@@ -349,16 +354,20 @@ non_numeric_cols_all = df.select_dtypes(exclude=["int64", "float64"]).columns.to
 if COUNTRY_COL in non_numeric_cols_all:
     non_numeric_cols_all.remove(COUNTRY_COL)
 
+
 def is_active_domain_col(col: str) -> bool:
     if "_" not in col:
         return False
     return col.split("_", 1)[0] in active_domains
 
+
 numeric_cols = [c for c in numeric_cols_all if is_active_domain_col(c)]
 non_numeric_cols = [c for c in non_numeric_cols_all if is_active_domain_col(c)]
 
 df = build_stability_score(df, active_domains)
-numeric_cols_with_score = list(dict.fromkeys(numeric_cols + (["stability_score"] if "stability_score" in df.columns else [])))
+numeric_cols_with_score = list(
+    dict.fromkeys(numeric_cols + (["stability_score"] if "stability_score" in df.columns else []))
+)
 
 pretty_numeric = {pretty_name(c): c for c in numeric_cols_with_score}
 pretty_numeric_options = list(pretty_numeric.keys())
@@ -373,7 +382,11 @@ if len(pretty_numeric_options) < 2:
 st.sidebar.subheader("Scatterplot settings")
 
 x_pretty = st.sidebar.selectbox("X-axis (numeric)", pretty_numeric_options, index=0)
-y_pretty = st.sidebar.selectbox("Y-axis (numeric)", pretty_numeric_options, index=1 if len(pretty_numeric_options) > 1 else 0)
+y_pretty = st.sidebar.selectbox(
+    "Y-axis (numeric)",
+    pretty_numeric_options,
+    index=1 if len(pretty_numeric_options) > 1 else 0,
+)
 
 color_pretty = st.sidebar.selectbox("Color by", pretty_categorical_options, index=0)
 
@@ -493,17 +506,22 @@ with left:
     zy = zscore(plot_df[y_col])
     plot_df["_is_outlier"] = ((zx.abs() > 2.5) | (zy.abs() > 2.5)).fillna(False)
 
+    # If color is numeric -> continuous green scale
+    # If color is categorical -> discrete green shades
+    green_discrete = px.colors.sequential.Greens[2:]
+
     fig = px.scatter(
-    plot_view_df,
-    x=x_col,
-    y=y_col,
-    color=color_col,
-    size=size_col,
-    hover_name=COUNTRY_COL,
-    hover_data=hover_data,
-    title=f"{y_pretty} vs {x_pretty}",
-    trendline="ols" if show_trendline else None,
-    color_continuous_scale="Turbo",  
+        plot_view_df,
+        x=x_col,
+        y=y_col,
+        color=color_col,
+        size=size_col,
+        hover_name=COUNTRY_COL,
+        hover_data=hover_data,
+        title=f"{y_pretty} vs {x_pretty}",
+        trendline="ols" if show_trendline else None,
+        color_continuous_scale=CONTINUOUS_GREEN_SCALE,
+        color_discrete_sequence=green_discrete,
     )
 
     # Highlight overlay (only if not already showing only highlighted)
@@ -672,7 +690,7 @@ st.dataframe(table_df, use_container_width=True, hide_index=True)
 
 
 # ---------------------------------------------------------
-# 8. WORLD MAP (OPTION B: FULL-WIDTH MAP, INFO BELOW)
+# 8. WORLD MAP (FULL-WIDTH MAP, INFO BELOW)
 # ---------------------------------------------------------
 
 st.subheader("World map")
@@ -708,7 +726,7 @@ map_df["iso3"] = map_df[COUNTRY_COL].apply(to_iso3)
 # ---- build map values ----
 if map_metric_pretty == "Highlight only":
     map_df["map_value"] = map_df[COUNTRY_COL].isin(highlight_countries).astype(int)
-    color_scale = [[0.0, "#111111"], [1.0, "#4C9AFF"]]
+    color_scale = [[0.0, DARK_BG], [1.0, HIGHLIGHT_GREEN]]
     show_scale = False
     colorbar_title = None
 else:
@@ -731,11 +749,11 @@ else:
     if use_log_scale:
         map_df["map_value"] = np.log10(map_df["map_value"] + 1)
 
-    color_scale = "Turbo"
+    color_scale = CONTINUOUS_GREEN_SCALE
     show_scale = True
     colorbar_title = f"{map_metric_pretty}" + (" (log10+1)" if use_log_scale else "")
 
-# ---- availability stats (computed ONCE) ----
+# ---- availability stats ----
 available_count = int(map_df["map_value"].notna().sum())
 missing_count = int(map_df["map_value"].isna().sum())
 
@@ -789,7 +807,7 @@ if highlight_countries:
         overlay = px.choropleth(
             hi,
             locations="iso3",
-            color_discrete_sequence=["#4C9AFF"],
+            color_discrete_sequence=[HIGHLIGHT_GREEN],
         )
         for tr in overlay.data:
             tr.showlegend = False
@@ -804,28 +822,28 @@ map_fig.update_layout(
         showcoastlines=True,
         coastlinecolor="#333333",
         bgcolor="rgba(0,0,0,0)",
-        landcolor="#111111",
+        landcolor=DARK_BG,
         oceancolor="#0b0f1a",
         showocean=True,
     ),
-    coloraxis=dict(showscale=False),  # <- IMPORTANT: hide the built-in colorbar
+    coloraxis=dict(showscale=False),  # hide built-in colorbar
 )
 
 st.plotly_chart(
     map_fig,
     use_container_width=True,
     config={
-        "displayModeBar": True,   # show tools
-        "scrollZoom": True,       # mousewheel zoom
+        "displayModeBar": True,
+        "scrollZoom": True,
         "displaylogo": False,
     },
 )
 
 # ---- Neat legend below the map (replaces the Plotly colorbar) ----
 if map_metric_pretty == "Highlight only":
-    st.caption("Legend: highlighted countries are shown in blue; others are dark.")
+    st.caption("Legend: highlighted countries are shown in green; others are dark.")
 else:
-    # Show min/max from the original (non-log) values so it’s interpretable
+    # Show min/max from original (non-log) values so it’s interpretable
     metric_col = pretty_numeric[map_metric_pretty]
     raw_vals = map_base[[COUNTRY_COL, metric_col]].copy()
     raw_vals[metric_col] = pd.to_numeric(raw_vals[metric_col], errors="coerce")
@@ -835,8 +853,7 @@ else:
     left_leg, right_leg = st.columns([3.0, 1.2])
     with left_leg:
         st.caption(
-            f"**{map_metric_pretty}**"
-            + (" (map shows log10(value+1))" if use_log_scale else "")
+            f"**{map_metric_pretty}**" + (" (map shows log10(value+1))" if use_log_scale else "")
         )
     with right_leg:
         if pd.notna(vmin) and pd.notna(vmax):
@@ -844,15 +861,14 @@ else:
         else:
             st.caption("min/max: n/a")
 
-# ---- Horizontal colorbar under the legend (Turbo, labels follow log toggle) ----
+# ---- Horizontal colorbar under the legend (GREEN, labels follow log toggle) ----
 if map_metric_pretty != "Highlight only":
-    turbo_css = (
+    greens_css = (
         "linear-gradient(90deg, "
-        "#30123b, #3b4cc0, #2c7bb6, #00a6ca, #00ccbc, "
-        "#90eb9d, #f9d057, #f29e2e, #e76818, #d7191c)"
+        "#f7fcf5, #e5f5e0, #c7e9c0, #a1d99b, "
+        "#74c476, #41ab5d, #238b45, #006d2c, #00441b)"
     )
 
-    # Compute labels based on raw or log values
     if pd.notna(vmin) and pd.notna(vmax):
         if use_log_scale:
             vmin_s = np.log10(vmin + 1)
@@ -875,7 +891,7 @@ if map_metric_pretty != "Highlight only":
           <div style="
               height:12px;
               width:100%;
-              background:{turbo_css};
+              background:{greens_css};
               border-radius:8px;
               border:1px solid rgba(255,255,255,0.18);
           "></div>
@@ -895,7 +911,7 @@ if map_metric_pretty != "Highlight only":
         unsafe_allow_html=True,
     )
 
-# ---- availability info BELOW the map (clean, optional) ----
+# ---- availability info BELOW the map ----
 st.markdown("### Data availability")
 
 k1, k2 = st.columns(2)
@@ -919,23 +935,3 @@ if map_metric_pretty != "Highlight only" and missing_for_metric:
             hide_index=True,
             height=300,
         )
-
-# ---------------------------------------------------------
-# 9. STATIC SCATTERPLOT (optional)
-# ---------------------------------------------------------
-
-st.subheader("Static scatterplot")
-st.markdown("Useful for exporting figures to the report.")
-
-plt.figure(figsize=(6, 4))
-sns.scatterplot(
-    data=plot_df,
-    x=x_col,
-    y=y_col,
-    hue=color_col if (color_col is not None and color_col != "stability_score") else None,
-    size=size_col if size_col is not None else None,
-    alpha=0.8,
-)
-plt.title(f"{y_pretty} vs {x_pretty}")
-plt.tight_layout()
-st.pyplot(plt.gcf())
